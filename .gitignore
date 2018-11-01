@@ -3,3 +3,5 @@ data/
 models/
 logs/
 __pycache__
+weights/
+results/

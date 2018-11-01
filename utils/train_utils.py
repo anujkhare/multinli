@@ -25,7 +25,7 @@ def evaluate(model, dataloader, loss_func, device, n_batches=10):
 
         predicted = model(inputs)
 
-        loss += loss_func(predicted, label)
+        loss += loss_func(predicted, label).data.cpu().numpy()
         prediction = torch.argmax(predicted, dim=1)
 
         # TODO: get the confusion here
@@ -39,10 +39,10 @@ def evaluate(model, dataloader, loss_func, device, n_batches=10):
     return loss, accuracy
 
 
-def predict(model, dataloader):
+def predict(model, dataloader, device):
     list_predictions = []
     for ix, batch in enumerate(dataloader):
-        inputs, label = prep_inputs(batch)
+        inputs, label = prep_inputs(batch, device=device)
 
         predicted = model(inputs)
         prediction = torch.argmax(predicted, dim=1)
