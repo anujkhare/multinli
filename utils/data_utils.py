@@ -1,5 +1,6 @@
 import json
 
+import torch
 from torch.utils.data import Dataset
 from typing import Dict
 import numpy as np
@@ -8,11 +9,24 @@ import string
 
 
 class MNLIDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, word_vectors: Dict) -> None:
+    @staticmethod
+    def _sort_by_len(df_in: pd.DataFrame) -> pd.DataFrame:
+        df = df_in.copy()  # type: pd.DataFrame
+        df['len1'] = df.sentence1.apply(lambda x: len(x.split()))
+        df['len2'] = df.sentence2.apply(lambda x: len(x.split()))
+        df['total_len'] = df.len1 + df.len2
+
+        df.sort_values(by='total_len', ascending=True, inplace=True)
+        return df
+
+    def __init__(self, df: pd.DataFrame, word_vectors: Dict, sort_by_len: bool = True) -> None:
         df['label_id'] = df.gold_label.map(lbl_to_id)
+        assert df.gold_label.notnull().all()
         df['sentence1'] = df['sentence1'].apply(lambda x: x.strip(string.punctuation))
         df['sentence2'] = df['sentence2'].apply(lambda x: x.strip(string.punctuation))
 
+        if sort_by_len:
+            df = self._sort_by_len(df)
         self.df = df
         self.word_vectors = word_vectors
 
@@ -81,8 +95,47 @@ def load_data(file_path) -> pd.DataFrame:
     return df
 
 
-id_to_lbl = ['neutral', 'entailment', 'contradiction']
-lbl_to_id = {
-    lbl: ix
-    for ix, lbl in enumerate(id_to_lbl)
+id_to_lbl = {
+    0: 'neutral',
+    1: 'entailment',
+    2: 'contradiction',
+    -100: 'hidden'
 }
+
+lbl_to_id = {
+    lbl: id
+    for id, lbl in id_to_lbl.items()
+}
+
+
+# Data loader specific
+def get_padded_tensor_lens(data):
+    data = sorted(data, key=len, reverse=True)
+    lens = [len(x) for x in data]
+
+    max_len = max(lens)
+    data = np.array([
+        np.pad(datum, pad_width=[(0, max_len - len(datum)), (0, 0)], mode='constant', constant_values=0)
+        for datum in data
+    ])
+
+    tensor = torch.from_numpy(data.astype(np.float32))
+    return tensor, lens
+
+
+def collate_fn(batch):
+    sentence1 = get_padded_tensor_lens([sample['sentence1'] for sample in batch])
+    sentence2 = get_padded_tensor_lens([sample['sentence2'] for sample in batch])
+
+    final_sentence1 = [sample['final_sentence1'] for sample in batch]
+    final_sentence2 = [sample['final_sentence2'] for sample in batch]
+    label = torch.from_numpy(np.array([sample['label'] or -100 for sample in batch], dtype=np.long))
+
+    #     print(batch)
+    return {
+        'sentence1': sentence1,
+        'sentence2': sentence2,
+        'final_sentence1': final_sentence1,
+        'final_sentence2': final_sentence2,
+        'label': label
+    }

@@ -5,11 +5,14 @@ import torch
 
 
 def prep_inputs(batch, device=0):
-    inputs = (Variable(batch['sentence1']).cuda(device=device),
-              Variable(batch['sentence2']).cuda(device=device))
-    label = Variable(batch['label']).cuda(device=device)
+    vectors1, lens1 = batch['sentence1']
+    vectors2, lens2 = batch['sentence2']
+    vectors1 = Variable(vectors1).cuda(device=device)
+    vectors2 = Variable(vectors2).cuda(device=device)
 
-    return inputs, label
+    label = batch['label'].cuda(device=device)
+
+    return (vectors1, lens1, vectors2, lens2), label
 
 
 def evaluate(model, dataloader, loss_func, device, n_batches=10):
@@ -23,7 +26,7 @@ def evaluate(model, dataloader, loss_func, device, n_batches=10):
 
         inputs, label = prep_inputs(batch, device=device)
 
-        predicted = model(inputs)
+        predicted = model(*inputs)
 
         loss += loss_func(predicted, label).data.cpu().numpy()
         prediction = torch.argmax(predicted, dim=1)
@@ -44,7 +47,7 @@ def predict(model, dataloader, device):
     for ix, batch in enumerate(dataloader):
         inputs, label = prep_inputs(batch, device=device)
 
-        predicted = model(inputs)
+        predicted = model(*inputs)
         prediction = torch.argmax(predicted, dim=1)
         list_predictions += list(prediction.data.cpu().numpy())
 
@@ -53,7 +56,7 @@ def predict(model, dataloader, device):
 
 def train(model, dataloader_train, dataloader_val, optimizer, loss_func, device, model_dir: str,
           n_epochs: int = 4, start_epoch=None,
-          val_every: int = 1000, save_every: int = 50000,
+          val_every: int = 1000, save_every: int = 10000,
           writer=None
           ):
     epoch = start_epoch or 0
@@ -69,7 +72,7 @@ def train(model, dataloader_train, dataloader_val, optimizer, loss_func, device,
 
             # Predict
             inputs, label = prep_inputs(batch, device=device)
-            predicted = model(inputs)
+            predicted = model(*inputs)
 
             # Backprop, optimize
             optimizer.zero_grad()
