@@ -16,12 +16,32 @@ class LSTM(torch.nn.Module):
         )
 
     def _sentence_features(self, padded, lens):
+        # Take projection of all word embeddings
         proj = self.projection(padded)
-        packed = torch.nn.utils.rnn.pack_padded_sequence(proj, lens, batch_first=True)
-        _, (hT, _) = self.lstm(packed)
+        
+        # You need to sort and pack the sentences
+        lens = np.array(lens, dtype=np.long)
+        sort_inds = np.argsort(lens)[::-1]
 
-        sentence_vec = hT.transpose(0, 1)  # get batch first: B*num_layers*num_directions*300
+        idx = np.arange(len(sort_inds))
+        inds_reverse = [np.where(sort_inds == ix)[0][0] for ix in idx]
+        assert np.all(lens[sort_inds][inds_reverse] == lens)
+        
+        # Acutally sort the sentences and their lengths
+        padded_sorted = torch.cat([proj[ind][np.newaxis, ...] for ind in sort_inds], dim=0)
+        lens = lens[sort_inds]
+        assert len(padded_sorted) == len(proj)
+        
+        packed = torch.nn.utils.rnn.pack_padded_sequence(padded_sorted, lens, batch_first=True)
+        
+        # Pass through the LSTM to calculate the final hidden state
+        _, (hT, _) = self.lstm(packed)
+        sentence_vec = hT.transpose(0, 1)
         sentence_vec = sentence_vec.contiguous().view(sentence_vec.shape[0], -1)
+
+        # Reorder the sentences to the initial order
+        sentence_vec = sentence_vec[inds_reverse]
+        
         return sentence_vec
 
     def forward(self, padded1, lens1, padded2, lens2):
@@ -29,7 +49,7 @@ class LSTM(torch.nn.Module):
         sentence_vec2 = self._sentence_features(padded2, lens2)
 
         features = torch.cat(
-            [sentence_vec1, sentence_vec1, sentence_vec1 - sentence_vec2, sentence_vec1 * sentence_vec2],
+            [sentence_vec1, sentence_vec2, sentence_vec1 - sentence_vec2, sentence_vec1 * sentence_vec2],
             dim=1)
         pred = self.classifier(features)
         return F.log_softmax(pred, dim=1)

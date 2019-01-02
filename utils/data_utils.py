@@ -109,8 +109,8 @@ lbl_to_id = {
 
 
 # Data loader specific
-def get_padded_tensor_lens(data):
-    data = sorted(data, key=len, reverse=True)
+def get_padded_tensor_and_lens(data):
+    # NOTE: DON'T SORT HERE! YOU'LL LOSE THE CORRESPONDANCE B/W SENTENCE PAIRS AND THE LABELS
     lens = [len(x) for x in data]
 
     max_len = max(lens)
@@ -124,14 +124,13 @@ def get_padded_tensor_lens(data):
 
 
 def collate_fn(batch):
-    sentence1 = get_padded_tensor_lens([sample['sentence1'] for sample in batch])
-    sentence2 = get_padded_tensor_lens([sample['sentence2'] for sample in batch])
+    sentence1 = get_padded_tensor_and_lens([sample['sentence1'] for sample in batch])
+    sentence2 = get_padded_tensor_and_lens([sample['sentence2'] for sample in batch])
 
     final_sentence1 = [sample['final_sentence1'] for sample in batch]
     final_sentence2 = [sample['final_sentence2'] for sample in batch]
     label = torch.from_numpy(np.array([sample['label'] or -100 for sample in batch], dtype=np.long))
 
-    #     print(batch)
     return {
         'sentence1': sentence1,
         'sentence2': sentence2,
